@@ -239,9 +239,11 @@ class Fenrirealm :
 
         return chapters.sortedWith(
             compareBy({ it.group?.index ?: 0 }, { it.number }),
-        ).mapIndexedNotNull { index, chapter ->
+        ).run {
+            computeGappedIndex(this)
+        }.mapNotNull { (chapter, index) ->
             val isLocked = chapter.locked?.price?.let { it > 0 } ?: false
-            if (hideLockedChapters && isLocked) return@mapIndexedNotNull null
+            if (hideLockedChapters && isLocked) return@mapNotNull null
 
             SChapter.create().apply {
                 url = buildString {
@@ -257,7 +259,7 @@ class Fenrirealm :
 
                     val group = chapter.group
                     when {
-                        group?.abbr != null  -> append("${group.abbr} Ch. ${chapter.number}")
+                        group?.abbr != null -> append("${group.abbr} Ch. ${chapter.number}")
                         group?.index != null -> append("Vol. ${group.index} Ch. ${chapter.number}")
                         else -> append("Chapter ${chapter.number}")
                     }
@@ -268,7 +270,7 @@ class Fenrirealm :
                         ?.takeIf(String::isNotBlank)
                         ?.let { append(" - $it") }
                 }
-                chapter_number = (index + 1).toFloat()
+                chapter_number = index.toFloat()
                 date_upload = parseDate(chapter.createdAt)
             }
         }.asReversed()
@@ -631,6 +633,28 @@ class Fenrirealm :
         val price: Int? = null,
         @SerialName("unlocked_at") val unlockedAt: String? = null,
     )
+
+    private fun computeGappedIndex(
+        chapters: List<ChapterApiDto>,
+    ): List<Pair<ChapterApiDto, Int>> {
+        var prev: ChapterApiDto? = null
+        var index = 0
+
+        return chapters.map { curr ->
+
+            val step = when {
+                prev == null -> 1
+                prev.group?.index == curr.group?.index ->
+                    (curr.number - prev.number).coerceAtLeast(1)
+                else -> curr.number
+            }
+
+            index += step
+            prev = curr
+
+            curr to index
+        }
+    }
 
     companion object {
         private const val PREF_HIDE_LOCKED_CHAPTERS = "fenrirealm_hide_locked_chapters"
